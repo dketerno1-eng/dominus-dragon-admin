@@ -1,0 +1,10 @@
+# Arquivos locais e segredos nunca devem ser publicados
+site/private/config.php
+site/private/installer_key.php
+.env
+*.env
+*.sqlite3
+*.log
+__pycache__/
+*.pyc
+/dist/
