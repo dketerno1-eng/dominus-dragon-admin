@@ -9,7 +9,7 @@ Painel PHP pequeno, com cadastro de várias VPS e consulta direta à API Dragon.
 3. Abra `https://SEU-SITE/consulta/`. Informe a chave de instalação, crie uma senha do mini painel e confirme.
 4. A instalação cria sua configuração e remove a chave PHP. Exclua também `CHAVE_INSTALACAO.txt` da hospedagem.
 5. Clique **Adicionar máquina**. Informe nome, categoria, endereço público da API, usuário administrador do Dragon e senha. Para a máquina de testes com HTTP, marque a opção correspondente.
-6. Selecione a máquina e clique **Consultar usuários**.
+6. A consulta começa automaticamente ao abrir o painel, ao selecionar outra máquina e após salvar uma máquina. **Atualizar agora** permite repetir a consulta.
 
 A senha do mini painel é independente das credenciais do Dragon. Requisitos: PHP 7.4+, extensões cURL e OpenSSL, sessões, pasta `private` gravável pelo PHP. O instalador mostra requisitos ausentes. O acesso via HTTPS da própria Alphimedia é recomendado. Sem necessidade de criar banco de dados.
 
@@ -19,7 +19,7 @@ Na sua VPS de teste o login e a leitura foram confirmados em `http://127.0.0.1:9
 
 Não use `10.0.0.235` (IP interno Oracle), `127.0.0.1` nem o domínio da hospedagem como endereço da máquina. O público da VPS aparece nos detalhes da instância no painel Oracle.
 
-As regras Oracle/VCN/NSG e o firewall Linux precisam permitir a porta escolhida, e a hospedagem precisa permitir saída TCP para ela. **Não foi confirmado que o seu plano Alphimedia permite a porta 9090**; o botão de consulta testa login e leitura e mostra em qual etapa há falha. Timeout não significa necessariamente senha errada. Se a saída estiver bloqueada, peça ao suporte da Alphimedia liberação para o IPv4 público da sua VPS na porta TCP 9090, ou disponibilize a API em porta permitida conforme o roteamento do Dragon.
+As regras Oracle/VCN/NSG e o firewall Linux precisam permitir a porta escolhida, e a hospedagem precisa permitir saída TCP para ela. **Não foi confirmado que o seu plano Alphimedia permite a porta 9090**; a consulta automática testa login e leitura e mostra em qual etapa há falha. Timeout não significa necessariamente senha errada. Se a saída estiver bloqueada, peça ao suporte da Alphimedia liberação para o IPv4 público da sua VPS na porta TCP 9090, ou disponibilize a API em porta permitida conforme o roteamento do Dragon.
 
 O mini painel não altera portas, firewall, SSH, serviços ou contas da VPS. Também não pressupõe que a porta 80 do sshpanel disponibilize a mesma API da 9090. Só é usado o endereço que você cadastrar.
 
@@ -36,7 +36,7 @@ O mini painel não altera portas, firewall, SSH, serviços ou contas da VPS. Tam
 - Falha de atualização mantém a leitura anterior identificada; não inventa estado online.
 - Editar/remover máquina afeta somente o cadastro do mini painel. Remover do painel não exclui usuários da VPS.
 
-Os resultados ficam apenas na memória da página; atualizar a página requer nova consulta. Não há monitoramento contínuo, pagamentos, mensagens ou controle de usuários nesta etapa. O total é o número de registros devolvidos pela API para o escopo local e credenciais usadas.
+Os resultados ficam apenas na memória da página; abrir ou atualizar a página inicia uma nova consulta da primeira máquina cadastrada. Não há monitoramento contínuo, pagamentos, mensagens ou controle de usuários nesta etapa. O total é o número de registros devolvidos pela API para o escopo local e credenciais usadas.
 
 ## Credenciais e arquivos
 
@@ -46,7 +46,7 @@ HTTP de teste transmite as credenciais sem TLS entre Alphimedia e VPS, mesmo qua
 
 Faça backup privado de `private/settings.php`; ele inclui configurações, chave e credenciais cifradas. O acesso ao painel tem senha, CSRF, expiração por inatividade e limite global de tentativas. Arquivos de dados têm extensão PHP e prefixo de saída, além da proteção `.htaccess`. Não publique a pasta `private` real ou ZIPs configurados no GitHub. A edição do endereço/usuário exige reinformar a senha para evitar enviá-la a um destino diferente por engano.
 
-Máximo de 100 máquinas e até 4 MB por resposta, consulta manual a uma máquina por vez. DNS IPv4 público; IPv6 exclusivo não suportado nesta versão. A gravação usa bloqueio de arquivo e substituição atômica; evite editar arquivos de dados manualmente com o painel aberto. Ausência de armazenamento transacional/banco exige backup antes de mudanças ou atualização.
+Máximo de 100 máquinas e até 4 MB por resposta, consulta automática da máquina selecionada, com bloqueio de requisições duplicadas e intervalo mínimo local de 3,5 segundos por máquina. DNS IPv4 público; IPv6 exclusivo não suportado nesta versão. A gravação usa bloqueio de arquivo e substituição atômica; evite editar arquivos de dados manualmente com o painel aberto. Ausência de armazenamento transacional/banco exige backup antes de mudanças ou atualização.
 
 ## Gerar um ZIP novo a partir do GitHub
 
@@ -66,3 +66,9 @@ node --check assets/app.js
 ```
 
 O contrato de API foi confirmado localmente pelo usuário na VPS: login e lista contendo Darlam, validade, limite 0 e conexões 0. O acesso da Alphimedia ainda exige validação real. A entrega passou na análise de sintaxe PHP/JavaScript, em 29 verificações do conector e na integração local: instalação, login, cadastro/edição de máquina, CSRF, criptografia e chamadas cURL reais a uma API simulada. Isso não representa homologação da Alphimedia ou da rede Oracle. A aparência final não foi verificada em navegador automatizado neste ambiente.
+
+## Atualizar da versão 1.0 para 1.1
+
+Substitua apenas `index.php` e `assets/app.js` na pasta instalada e recarregue a página. Preserve a pasta `private`, suas máquinas e a senha do painel. A consulta ocorre na abertura e na seleção/salvamento da máquina; não existe atualização periódica em segundo plano. Ao trocar rapidamente, uma consulta iniciada há menos de 3,5 segundos é reutilizada.
+
+Verificação da consulta automática: `node tests/auto_query_test.js`. O teste executa o JavaScript com DOM e respostas de rede simuladas para validar abertura, seleção, duplicações, concorrência, falhas e salvamento.
