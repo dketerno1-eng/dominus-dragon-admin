@@ -1,0 +1,5 @@
+private/*.php
+private/*.pem
+*.zip
+CHAVE_INSTALACAO.txt
+__pycache__/
