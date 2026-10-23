@@ -13,7 +13,7 @@ function data_decode(string $raw): array {
     if (!is_array($value)) { throw new RuntimeException('Arquivo de dados inválido.'); }
     return $value;
 }
-function data_read(string $name): array {
+function file_data_read(string $name): array {
     $path = private_dir().'/'.$name.'.php';
     $handle = @fopen($path, 'rb');
     if (!$handle) { throw new RuntimeException('Não foi possível ler a configuração.'); }
@@ -22,7 +22,7 @@ function data_read(string $name): array {
         return data_decode(stream_get_contents($handle));
     } finally { flock($handle, LOCK_UN); fclose($handle); }
 }
-function data_update(string $name, callable $change): array {
+function file_data_update(string $name, callable $change): array {
     $path = private_dir().'/'.$name.'.php';
     $lock = @fopen(private_dir().'/'.$name.'-lock.php', 'c+b');
     if (!$lock) { throw new RuntimeException('A pasta private precisa permitir gravação pelo PHP.'); }
@@ -45,6 +45,9 @@ function data_update(string $name, callable $change): array {
         flock($lock, LOCK_UN); fclose($lock);
     }
 }
+require_once __DIR__.'/storage.php';
+function data_read(string $name): array { return sql_configured() ? sql_read($name) : file_data_read($name); }
+function data_update(string $name, callable $change): array { return sql_configured() ? sql_update($name,$change) : file_data_update($name,$change); }
 function settings(): array { return data_read('settings'); }
 function seal(string $plain, string $key): string {
     $iv = random_bytes(12); $tag = '';

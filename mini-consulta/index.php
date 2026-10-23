@@ -9,9 +9,11 @@ session_set_cookie_params(['secure'=>$https, 'httponly'=>true, 'samesite'=>'Stri
 if (!session_start()) { http_response_code(503); exit('O PHP não conseguiu iniciar a sessão. Confira a configuração de sessões no cPanel.'); }
 require __DIR__.'/app/core.php';
 $_SESSION['csrf'] = $_SESSION['csrf'] ?? bin2hex(random_bytes(24));
-$installed = is_file(private_dir().'/settings.php');
+$installed = sql_configured();
+$legacy = !$installed && is_file(private_dir().'/settings.php');
 $requirements = [];
 foreach (['curl_init'=>'cURL', 'openssl_encrypt'=>'OpenSSL', 'password_hash'=>'password_hash'] as $fn=>$label) { if (!function_exists($fn)) { $requirements[] = $label; } }
+if (!class_exists('PDO') || !in_array('mysql',PDO::getAvailableDrivers(),true)) { $requirements[] = 'PDO MySQL (pdo_mysql)'; }
 if (!is_writable(private_dir())) { $requirements[] = 'permissão de gravação na pasta private'; }
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -25,10 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!hash_equals($expected, trim((string)($_POST['install_key'] ?? '')))) { throw new RuntimeException('Chave de instalação incorreta.'); }
             $password = (string)($_POST['password'] ?? '');
             if (strlen($password) < 8 || strlen($password) > 256 || $password !== (string)($_POST['confirm'] ?? '')) { throw new RuntimeException('Use senha com pelo menos 8 caracteres e confirme.'); }
-            data_update('settings', function($old) use ($password) {
-                if ($old) { throw new RuntimeException('O painel já foi instalado.'); }
-                return ['version'=>'1.0.0', 'password_hash'=>password_hash($password, PASSWORD_DEFAULT), 'key'=>base64_encode(random_bytes(32)), 'servers'=>[]];
-            });
+            install_sql($_POST,$password);
             @unlink(private_dir().'/install-key.php');
             session_regenerate_id(true); $_SESSION['auth'] = true; $_SESSION['seen'] = time(); $_SESSION['csrf'] = bin2hex(random_bytes(24));
             header('Location: ./'); exit;
@@ -88,18 +87,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 $logged = $installed && authenticated();
-$servers = $logged ? public_servers(settings()['servers']) : [];
+try { $servers = $logged ? public_servers(settings()['servers']) : []; }
+catch (Throwable $ex) { http_response_code(503); exit(e($ex instanceof RuntimeException ? $ex->getMessage() : 'Não foi possível ler as tabelas MySQL. Confira private/db.php e restaure o banco do painel.')); }
 ?>
 <!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dominus • Mini Consulta</title><link rel="stylesheet" href="assets/style.css"></head>
 <body><main><header><a href="./" class="brand"><span class="mark">D</span><span>DOMINUS<small>MINI CONSULTA</small></span></a><span class="badge"><i></i> Somente leitura</span></header>
 <?php if (!$logged): ?>
-<section class="auth"><div class="eyebrow"><?= $installed ? 'ACESSO AO PAINEL' : 'PRIMEIRO ACESSO' ?></div><h1>Suas máquinas.<br>Seus usuários.</h1><p><?= $installed ? 'Entre para consultar os cadastros do Dragon.' : 'Crie o acesso ao mini painel. Não precisa de banco de dados.' ?></p>
+<section class="auth"><div class="eyebrow"><?= $installed ? 'ACESSO AO PAINEL' : 'PRIMEIRO ACESSO' ?></div><h1>Suas máquinas.<br>Seus usuários.</h1><p><?= $installed ? 'Entre para consultar os cadastros do Dragon.' : 'Configure o banco MySQL da Alphimedia e o acesso ao mini painel.' ?></p>
 <?php if ($requirements): ?><p class="notice error">Requisito ausente: <?=e(implode(', ', $requirements))?></p><?php endif; ?>
 <?php if ($error): ?><p class="notice error" role="alert"><?=e($error)?></p><?php endif; ?>
 <form method="post"><input type="hidden" name="csrf" value="<?=e($_SESSION['csrf'])?>"><input type="hidden" name="action" value="<?=$installed?'login':'install'?>">
-<?php if (!$installed): ?><label>Chave de instalação<input name="install_key" required autocomplete="off" placeholder="Veja CHAVE_INSTALACAO.txt"></label><?php endif; ?>
-<label><?=$installed?'Senha do mini painel':'Crie a senha do mini painel'?><input name="password" type="password" required minlength="<?=$installed?1:8?>" maxlength="256" autocomplete="<?=$installed?'current-password':'new-password'?>"></label>
+<?php if (!$installed): ?><?php if ($legacy): ?><p class="notice">Versão anterior encontrada. Informe a senha atual do mini painel para importar as máquinas e credenciais para o MySQL.</p><?php endif; ?><label>Chave de instalação<input name="install_key" required autocomplete="off" placeholder="Veja CHAVE_INSTALACAO.txt"></label><?php endif; ?>
+<label><?=$installed?'Senha do mini painel':($legacy?'Senha atual do mini painel':'Crie a senha do mini painel')?><input name="password" type="password" required minlength="<?=$installed?1:8?>" maxlength="256" autocomplete="<?=$installed?'current-password':'new-password'?>"></label>
 <?php if (!$installed): ?><label>Confirme a senha<input name="confirm" type="password" required minlength="8" maxlength="256" autocomplete="new-password"></label><?php endif; ?>
+<?php if (!$installed): ?>
+<div class="db-fields"><span class="eyebrow">BANCO MYSQL • CPANEL</span>
+<label>Host do MySQL<input name="db_host" value="localhost" required maxlength="253" autocomplete="off"></label>
+<label>Porta do MySQL<input name="db_port" type="number" value="3306" min="1" max="65535" required></label>
+<label>Nome completo do banco<input name="db_name" required maxlength="128" placeholder="contacpanel_dominus" autocomplete="off"></label>
+<label>Usuário completo do banco<input name="db_user" required maxlength="128" placeholder="contacpanel_usuario" autocomplete="off"></label>
+<label>Senha do banco<input name="db_password" type="password" maxlength="512" autocomplete="new-password"></label>
+<p class="field-note">Crie o banco e associe o usuário com todas as permissões no cPanel. O instalador cria as tabelas automaticamente.</p></div>
+<?php endif; ?>
 <button class="primary" <?=$requirements?'disabled':''?>><?=$installed?'Entrar no painel':'Instalar e entrar'?> <span>→</span></button></form><small>A senha do painel é independente da senha de cada VPS.</small></section>
 <?php else: ?>
 <input type="hidden" id="csrf" value="<?=e($_SESSION['csrf'])?>"><input type="hidden" id="server-data" value="<?=e(json_encode($servers, JSON_UNESCAPED_UNICODE))?>">
@@ -116,6 +125,6 @@ $servers = $logged ? public_servers(settings()['servers']) : [];
 <label>Endereço público da API<input name="url" id="machine-url" required maxlength="300" placeholder="http://IP-PUBLICO:9090 ou https://api.seudominio.com"></label><p class="field-note">Use o IP público e a porta da API. Na sua VPS de teste: http://IP-PUBLICO:9090. A hospedagem e o firewall da VPS precisam permitir a conexão.</p>
 <label class="check"><input name="allow_http" id="allow-http" type="checkbox" value="1"> Permitir HTTP para esta máquina de teste</label><p class="field-note">Em HTTP, as credenciais trafegam sem criptografia entre a hospedagem e a VPS.</p>
 <div class="form-grid"><label>Usuário admin do Dragon<input name="username" id="machine-username" required maxlength="128" value="admin" autocomplete="off"></label><label>Senha da API<input name="password" id="machine-password" type="password" maxlength="256" autocomplete="new-password" placeholder="Senha do painel Dragon"></label></div>
-<p class="field-note">Ao editar, deixe a senha vazia para manter. Se mudar endereço ou usuário, informe a senha novamente.</p><div id="editor-error" class="notice error" role="alert" hidden></div><div class="dialog-footer"><button type="button" id="remove" class="danger" hidden>Remover do painel</button><button class="primary" id="save">Salvar máquina</button></div></form></dialog>
-<footer><span>DOMINUS • Mini Consulta v1.1 · Sem agente adicional</span><form method="post"><input type="hidden" name="csrf" value="<?=e($_SESSION['csrf'])?>"><button name="action" value="logout" class="secondary">Sair</button></form></footer><script src="assets/app.js?v=1.1" defer></script>
+<p class="field-note">As credenciais ficam salvas no MySQL para consultas futuras. Ao editar, deixe a senha vazia para manter. Se mudar endereço ou usuário, informe a senha novamente.</p><div id="editor-error" class="notice error" role="alert" hidden></div><div class="dialog-footer"><button type="button" id="remove" class="danger" hidden>Remover do painel</button><button class="primary" id="save">Salvar máquina</button></div></form></dialog>
+<footer><span>DOMINUS • Mini Consulta SQL v2.0 · Credenciais salvas em MySQL</span><form method="post"><input type="hidden" name="csrf" value="<?=e($_SESSION['csrf'])?>"><button name="action" value="logout" class="secondary">Sair</button></form></footer><script src="assets/app.js?v=2.0" defer></script>
 <?php endif; ?></main></body></html>

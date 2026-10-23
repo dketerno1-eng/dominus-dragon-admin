@@ -1,74 +1,94 @@
-# Dominus Mini Consulta — Alphimedia / cPanel
+# Dominus Mini Consulta SQL 2.0 — Alphimedia
 
-Painel PHP pequeno, com cadastro de várias VPS e consulta direta à API Dragon. Não requer agente, MySQL, Composer, Docker ou instalação adicional na VPS. Nenhuma operação de criação, renovação, exclusão ou alteração de usuários é implementada.
+Painel completo de consulta de usuários Dragon com máquinas e credenciais persistidas em MySQL/MariaDB. As credenciais são cadastradas uma vez e reutilizadas em todas as consultas. A consulta inicia automaticamente ao abrir o painel, ao selecionar outra máquina e após salvar uma máquina.
 
-## Instalar
+Esta etapa continua somente leitura de usuários na VPS. Cadastro, edição e remoção de máquinas afetam o mini painel; nenhuma conta VPN é criada, alterada, renovada ou excluída.
 
-1. Abra `CHAVE_INSTALACAO.txt` do ZIP pronto e copie a chave.
-2. No gerenciador de arquivos do cPanel da Alphimedia, crie uma pasta nova `public_html/consulta` e envie **todo o conteúdo** do ZIP para ela, preservando `.htaccess`, `app`, `private` e `assets`. Não substitua outro painel existente.
-3. Abra `https://SEU-SITE/consulta/`. Informe a chave de instalação, crie uma senha do mini painel e confirme.
-4. A instalação cria sua configuração e remove a chave PHP. Exclua também `CHAVE_INSTALACAO.txt` da hospedagem.
-5. Clique **Adicionar máquina**. Informe nome, categoria, endereço público da API, usuário administrador do Dragon e senha. Para a máquina de testes com HTTP, marque a opção correspondente.
-6. A consulta começa automaticamente ao abrir o painel, ao selecionar outra máquina e após salvar uma máquina. **Atualizar agora** permite repetir a consulta.
+## Instalação no cPanel
 
-A senha do mini painel é independente das credenciais do Dragon. Requisitos: PHP 7.4+, extensões cURL e OpenSSL, sessões, pasta `private` gravável pelo PHP. O instalador mostra requisitos ausentes. O acesso via HTTPS da própria Alphimedia é recomendado. Sem necessidade de criar banco de dados.
+1. Em **Bancos de dados MySQL**, crie um banco, um usuário e associe esse usuário ao banco com **TODOS OS PRIVILÉGIOS**. Copie os nomes completos, incluindo o prefixo da conta cPanel.
+2. Crie `public_html/consulta`. Envie e extraia o conteúdo inteiro do ZIP nessa pasta. Inclua arquivos `.htaccess`, pastas `app`, `assets`, `private` e `database`.
+3. Abra `https://SEU-DOMINIO/consulta/`. Informe a chave do arquivo `CHAVE_INSTALACAO.txt`, crie a senha do mini painel e informe host MySQL (geralmente `localhost`), porta (`3306`), banco, usuário e senha do banco.
+4. O instalador conecta ao MySQL e cria as tabelas automaticamente. Não precisa importar o SQL manualmente. Se preferir, importe antes `database/schema.sql` pelo phpMyAdmin no banco vazio e depois conclua a instalação pelo navegador.
+5. Após instalar, exclua o TXT da chave da hospedagem. A chave PHP de instalação é removida automaticamente.
+6. Clique em **Adicionar máquina**, informe nome, categoria, URL pública da API, login admin e senha do Dragon e salve. A consulta começa automaticamente.
 
-## Endereço da API na Alphimedia
+A senha do mini painel, a senha do banco e a senha admin do Dragon são três credenciais diferentes. Sem senha admin padrão ou contas de demonstração pré-cadastradas.
 
-Na sua VPS de teste o login e a leitura foram confirmados em `http://127.0.0.1:9090`. No mini painel use **`http://IP-PUBLICO-DA-VPS:9090`**, usuário `admin`, sua senha do Dragon e marque a opção HTTP de teste. O pacote aceita portas personalizadas entre 1 e 65535 e não instala agentes.
+Requisitos: PHP 7.4+, PDO MySQL (`pdo_mysql`), cURL, OpenSSL com AES-256-GCM, sessões e permissão de gravação na pasta `private`. MySQL 5.7+ ou MariaDB 10.3+ com InnoDB/utf8mb4. A criação do banco e a associação do usuário são feitas no cPanel; o instalador cria somente as tabelas dentro dele.
 
-Não use `10.0.0.235` (IP interno Oracle), `127.0.0.1` nem o domínio da hospedagem como endereço da máquina. O público da VPS aparece nos detalhes da instância no painel Oracle.
+## Atualizar das versões 1.0 / 1.1
 
-As regras Oracle/VCN/NSG e o firewall Linux precisam permitir a porta escolhida, e a hospedagem precisa permitir saída TCP para ela. **Não foi confirmado que o seu plano Alphimedia permite a porta 9090**; a consulta automática testa login e leitura e mostra em qual etapa há falha. Timeout não significa necessariamente senha errada. Se a saída estiver bloqueada, peça ao suporte da Alphimedia liberação para o IPv4 público da sua VPS na porta TCP 9090, ou disponibilize a API em porta permitida conforme o roteamento do Dragon.
+1. Faça backup da pasta `private` atual.
+2. Envie o pacote completo sobre a pasta instalada, **preservando os arquivos atuais dentro de private**. O ZIP não contém `settings.php`, `db.php` nem credenciais de máquinas, portanto não substitui seus dados.
+3. Abra o painel. Se encontrar `private/settings.php` da versão anterior, o instalador pede a **senha atual do mini painel**, confirmação, a nova chave do pacote e os dados de um banco vazio.
+4. As máquinas, categorias, credenciais e senha do painel são importadas para MySQL numa transação. A chave anterior é preservada para manter as senhas legíveis pela aplicação. O arquivo anterior é mantido como backup; o painel passa a usar o MySQL após a instalação.
+5. Confira as máquinas e uma consulta. Guarde o backup anterior fora da pasta pública.
 
-O mini painel não altera portas, firewall, SSH, serviços ou contas da VPS. Também não pressupõe que a porta 80 do sshpanel disponibilize a mesma API da 9090. Só é usado o endereço que você cadastrar.
+Se já existir `private/db.php`, é uma instalação SQL configurada: ela abre normalmente e não executa o instalador novamente. Não use o instalador em um banco Dominus já preenchido; restaure o `private/db.php` original correspondente ao banco. Não há mesclagem automática entre instalações SQL independentes.
 
-## O que a consulta mostra
+## O que é salvo no SQL
 
-- Máquinas separadas por nome e categoria; busca de máquinas.
-- Login por máquina, feito no servidor PHP, com `POST /api/auth/login`.
-- Consulta `GET /api/users?server_id=local` usando header `X-Session-Token`.
-- Usuário, vencimento, estado da validade, limite e conexões reportados pela API.
-- Limite `0` permanece `0`; não é interpretado como ilimitado.
-- Campos ausentes aparecem como “—”/“Não informado”. Datas sem fuso ou inválidas não são classificadas como vigentes.
-- Busca de usuários, filtro de validade e paginação local de 100 em 100.
-- Data de coleta no horário do navegador; datas originais da API preservadas no resultado JSON.
-- Falha de atualização mantém a leitura anterior identificada; não inventa estado online.
-- Editar/remover máquina afeta somente o cadastro do mini painel. Remover do painel não exclui usuários da VPS.
+| Tabela | Conteúdo |
+| --- | --- |
+| `dc_machines` | Nome e categoria da VPS, endereço da API, usuário admin do Dragon, senha cifrada, datas de criação e atualização. |
+| `dc_settings` | Versão do esquema e hash da senha de acesso ao mini painel. |
+| `dc_login_guard` | Janela e contador de tentativas de login do mini painel. |
 
-Os resultados ficam apenas na memória da página; abrir ou atualizar a página inicia uma nova consulta da primeira máquina cadastrada. Não há monitoramento contínuo, pagamentos, mensagens ou controle de usuários nesta etapa. O total é o número de registros devolvidos pela API para o escopo local e credenciais usadas.
+`database/schema.sql` contém todas as instruções CREATE TABLE. Não contém senhas reais, INSERT de máquinas ou DROP TABLE. O instalador preenche a configuração inicial e o próprio painel grava cada máquina com consultas preparadas e transações.
 
-## Credenciais e arquivos
+A senha Dragon é armazenada em AES-256-GCM, porque o painel precisa recuperá-la para fazer login na API. A chave e os dados de conexão MySQL ficam em `private/db.php`, protegido pelo PHP e `.htaccess`; a chave não é gravada no SQL. Faça backup **do banco e desse arquivo juntos**. Perder a chave exige cadastrar novamente as senhas Dragon. O token da API existe só durante a consulta; o painel faz um novo login automaticamente quando precisa consultar.
 
-As credenciais da API são armazenadas com AES-256-GCM em `private/settings.php`. A chave está na mesma configuração: isso protege contra leitura casual, mas acesso à conta da hospedagem permite recuperá-las. O token de sessão do Dragon existe apenas durante a consulta. Senhas e tokens não são devolvidos ao JavaScript nem incluídos nos resultados. Não há encerramento automático da sessão Dragon por desconhecimento de um endpoint de logout confirmado.
+Editar nome/categoria com a senha vazia mantém a credencial já salva. Trocar endereço ou usuário exige reinformar a senha. Credenciais e tokens não são enviados ao JavaScript nem incluídos na lista de usuários. O banco da hospedagem e o banco interno do Dragon são independentes: este painel usa a API, não conecta ao PostgreSQL da VPS.
 
-HTTP de teste transmite as credenciais sem TLS entre Alphimedia e VPS, mesmo quando o painel é acessado por HTTPS. A opção é explícita. Em HTTPS, a verificação de certificado permanece habilitada; utilize certificado válido na API. Esta versão não tem importação de certificado próprio.
+## Configurar sua VPS de teste
 
-Faça backup privado de `private/settings.php`; ele inclui configurações, chave e credenciais cifradas. O acesso ao painel tem senha, CSRF, expiração por inatividade e limite global de tentativas. Arquivos de dados têm extensão PHP e prefixo de saída, além da proteção `.htaccess`. Não publique a pasta `private` real ou ZIPs configurados no GitHub. A edição do endereço/usuário exige reinformar a senha para evitar enviá-la a um destino diferente por engano.
+Use **`http://IP-PUBLICO-DA-VPS:9090`**, usuário `admin`, senha do painel Dragon e marque **Permitir HTTP para esta máquina de teste**. Use o IPv4 público mostrado no painel Oracle. `127.0.0.1` e `10.0.0.235` não funcionam como endereço externo da VPS na hospedagem.
 
-Máximo de 100 máquinas e até 4 MB por resposta, consulta automática da máquina selecionada, com bloqueio de requisições duplicadas e intervalo mínimo local de 3,5 segundos por máquina. DNS IPv4 público; IPv6 exclusivo não suportado nesta versão. A gravação usa bloqueio de arquivo e substituição atômica; evite editar arquivos de dados manualmente com o painel aberto. Ausência de armazenamento transacional/banco exige backup antes de mudanças ou atualização.
+O contrato confirmado no terminal da sua VPS é:
 
-## Gerar um ZIP novo a partir do GitHub
+- `POST /api/auth/login`, enviando `username` e `password`, recebendo `token`.
+- `GET /api/users?server_id=local`, com header `X-Session-Token`.
 
-```bash
-python3 tools/build.py
-```
+A consulta retorna usuário, validade, limite e conexões informados pelo Dragon. Limite 0 é preservado como 0. Campos ausentes ficam não informados. Datas sem fuso ou inválidas não são classificadas como vigentes. O total é o número de usuários retornados para o escopo local e permissões das credenciais cadastradas.
 
-O gerador cria um ZIP de upload e uma chave de instalação nova no interior do ZIP. A chave não está no código público. O ZIP não contém credenciais de nenhuma VPS.
+A porta 9090 já respondeu localmente na sua VPS. O acesso externo pela Alphimedia ainda exige liberação no firewall Linux, nas regras Oracle/VCN/NSG e na saída de rede da hospedagem. O painel mostra se a falha ocorreu no login, consulta, certificado ou conectividade. Credenciais corretas não resolvem bloqueio de porta. Nenhuma porta ou regra é alterada por este pacote.
 
-## Verificar o código
+Em HTTP de teste, as credenciais trafegam sem TLS entre hospedagem e VPS; essa opção é explícita. Em HTTPS, o certificado é sempre verificado. O endereço aceita portas de 1 a 65535 e IPv4 público ou domínio com IPv4. Não é necessário agente adicional, Composer ou Docker.
+
+## Consulta automática
+
+Ao abrir o painel autenticado, a primeira máquina cadastrada é consultada. Ao trocar de máquina, ela também é consultada automaticamente. Máquinas salvas são consultadas logo após salvar. O botão **Atualizar agora** é opcional.
+
+Requisições simultâneas para a mesma máquina são deduplicadas. Ao retornar a uma máquina consultada há menos de 3,5 segundos, o resultado recente é reutilizado. Falhas mantêm os dados anteriores identificados, quando existem. Resultados ficam na memória da página; abrir/atualizar inicia nova consulta. Não há consulta periódica com o navegador fechado.
+
+Busca por máquina e usuário, categorias, filtros de validade e paginação local de 100 em 100. Até 100 máquinas cadastradas e 4 MB por resposta. Validade não comprova acesso ou autenticação bem-sucedida; conexões são apenas as informadas pela API.
+
+## Recuperação e diagnóstico
+
+- **PDO MySQL ausente:** habilite `pdo_mysql` no seletor de PHP do cPanel ou solicite ao suporte.
+- **Não conecta ao MySQL:** confira nomes com prefixo, host, senha e associação do usuário ao banco.
+- **Banco já tem dados:** restaure o arquivo `private/db.php` correspondente; não tente instalar com outra chave.
+- **Instalação SQL concluiu, mas configuração ficou pendente:** se houver `private/db-pending.php` e o banco contiver as tabelas preenchidas, renomeie esse arquivo para `private/db.php`. Ele contém a conexão e a chave geradas naquela instalação. Não o apague nem gere outra chave sem verificar o banco.
+- **Chave de instalação:** serve somente para configurar o pacote novo; não é senha de login nem chave de criptografia.
+- **401/403 da API:** confira credenciais e permissões admin do Dragon.
+- **Timeout:** confira IP público, porta cadastrada, firewall Oracle/Linux e política de saída TCP da Alphimedia.
+
+Não publique `private/db.php`, configurações anteriores nem backups SQL reais no GitHub.
+
+## Código e testes
+
+Gerar novo ZIP: `python3 tools/build.py`. Esse gerador inclui SQL e chave de instalação nova, sem dados de máquinas.
 
 ```bash
 php -l index.php
 php -l app/core.php
+php -l app/storage.php
 php tests/core_test.php
 node --check assets/app.js
+node tests/auto_query_test.js
 ```
 
-O contrato de API foi confirmado localmente pelo usuário na VPS: login e lista contendo Darlam, validade, limite 0 e conexões 0. O acesso da Alphimedia ainda exige validação real. A entrega passou na análise de sintaxe PHP/JavaScript, em 29 verificações do conector e na integração local: instalação, login, cadastro/edição de máquina, CSRF, criptografia e chamadas cURL reais a uma API simulada. Isso não representa homologação da Alphimedia ou da rede Oracle. A aparência final não foi verificada em navegador automatizado neste ambiente.
+Os testes SQL e de migração usam banco isolado. A consulta real ao Dragon foi confirmada pelo usuário no terminal; a instalação na Alphimedia e a conexão dela com a VPS precisam ser validadas no seu ambiente.
 
-## Atualizar da versão 1.0 para 1.1
-
-Substitua apenas `index.php` e `assets/app.js` na pasta instalada e recarregue a página. Preserve a pasta `private`, suas máquinas e a senha do painel. A consulta ocorre na abertura e na seleção/salvamento da máquina; não existe atualização periódica em segundo plano. Ao trocar rapidamente, uma consulta iniciada há menos de 3,5 segundos é reutilizada.
-
-Verificação da consulta automática: `node tests/auto_query_test.js`. O teste executa o JavaScript com DOM e respostas de rede simuladas para validar abertura, seleção, duplicações, concorrência, falhas e salvamento.
+Validação desta versão: testes de instalação nova e migração executados contra MariaDB 10.11 real e PDO MySQL; persistência da senha verificada em um novo processo PHP, edição/remoção SQL, login com sessão nova e consulta HTTP a Dragon simulado. Também passaram as 29 verificações do conector, o teste de consulta automática e a análise de sintaxe PHP/JavaScript. Ainda falta homologação na hospedagem Alphimedia e na conexão externa com sua VPS.

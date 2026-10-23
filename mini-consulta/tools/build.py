@@ -6,7 +6,7 @@ import zipfile
 import sys
 
 root=Path(__file__).resolve().parents[1]
-out=Path(sys.argv[1] if len(sys.argv)>1 else root.parent/'DOMINUS_MINI_CONSULTA_ALPHIMEDIA_v1.zip')
+out=Path(sys.argv[1] if len(sys.argv)>1 else root.parent/'DOMINUS_MINI_CONSULTA_ALPHIMEDIA_SQL_v2.zip')
 key=secrets.token_hex(16)
 with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
     for path in root.rglob('*'):
