@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+site/private/config.php
+site/private/*.pem
+site/private/login-lock.php
+*.zip
+*.key
+config.json
